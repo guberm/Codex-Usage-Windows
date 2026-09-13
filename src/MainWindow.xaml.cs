@@ -24,6 +24,7 @@ public partial class MainWindow : Window
     private readonly bool demo;
     private readonly string? smokeOutput;
     private readonly Forms.NotifyIcon tray = new();
+    private readonly Forms.ToolStripMenuItem floatingMenu = new("Show floating window") { CheckOnClick = true };
     private readonly DispatcherTimer timer = new() { Interval = TimeSpan.FromSeconds(30) };
     private readonly CancellationTokenSource lifetime = new();
     private CancellationTokenSource? login;
@@ -44,10 +45,13 @@ public partial class MainWindow : Window
         catch (Exception e) when (e is IOException or UnauthorizedAccessException or JsonException or CryptographicException) { error = "Could not load saved data. Sign out, then sign in again."; recovery = true; }
         Topmost = settings.Pinned; PinnedCheck.IsChecked = settings.Pinned;
         NotifyCheck.IsChecked = settings.Notify;
+        FloatingCheck.IsChecked = floatingMenu.Checked = settings.Floating;
         using (var key = Registry.CurrentUser.OpenSubKey(RunKey)) StartupCheck.IsChecked = key?.GetValue("CodexUsage") != null;
         ApplyTheme(IsLightTheme());
         var menu = new Forms.ContextMenuStrip();
         menu.Items.Add("Show / hide", null, (_, _) => { if (IsVisible) Hide(); else ShowPanel(); });
+        floatingMenu.Click += (_, _) => SetFloating(floatingMenu.Checked);
+        menu.Items.Add(floatingMenu);
         menu.Items.Add("Refresh now", null, async (_, _) => await Refresh());
         menu.Items.Add("Move near taskbar", null, (_, _) => { Dock(); Show(); SaveSettings(); });
         menu.Items.Add("Exit", null, (_, _) => Close());
@@ -82,6 +86,7 @@ public partial class MainWindow : Window
         if (demo && smokeOutput == null) { usage = DemoUsage(); signedIn = true; }
         Render();
         if (!signedIn) SetExpanded(true);
+        else if (!settings.Floating) Hide();
         if (smokeOutput != null) { await RunSmoke(); return; }
         timer.Start();
         await Refresh();
@@ -112,7 +117,17 @@ public partial class MainWindow : Window
         UpdateLayout();
         Left = oldRight - ActualWidth; Top = oldBottom - ActualHeight;
         KeepVisible();
+        if (!value && !settings.Floating) Hide();
     }
+    private void SetFloating(bool enabled)
+    {
+        settings = settings with { Floating = enabled };
+        FloatingCheck.IsChecked = floatingMenu.Checked = enabled;
+        SetExpanded(false);
+        if (enabled) Show(); else Hide();
+        TrySaveSettings();
+    }
+    private void FloatingChanged(object sender, RoutedEventArgs e) => SetFloating(FloatingCheck.IsChecked == true);
     private void SaveSettings()
     {
         // Persist the compact position even if the details panel is open.
@@ -266,11 +281,18 @@ public partial class MainWindow : Window
         if (trayPercent == text) return;
         using var bitmap = new Drawing.Bitmap(32, 32);
         using (var g = Drawing.Graphics.FromImage(bitmap)) {
-            g.Clear(Drawing.Color.FromArgb(29, 42, 42)); g.TextRenderingHint = Drawing.Text.TextRenderingHint.AntiAliasGridFit;
-            using var font = new Drawing.Font("Segoe UI", text.Length > 2 ? 12 : 15, Drawing.FontStyle.Bold, Drawing.GraphicsUnit.Pixel);
-            using var format = new Drawing.StringFormat { Alignment = Drawing.StringAlignment.Center, LineAlignment = Drawing.StringAlignment.Center };
-            using var brush = new Drawing.SolidBrush(Drawing.Color.FromArgb(157, 242, 210));
-            g.DrawString(text, font, brush, new Drawing.RectangleF(0, 0, 32, 32), format);
+            g.Clear(Drawing.Color.FromArgb(20, 30, 28)); g.SmoothingMode = Drawing.Drawing2D.SmoothingMode.AntiAlias;
+            using var family = new Drawing.FontFamily("Segoe UI");
+            using var glyphs = new Drawing.Drawing2D.GraphicsPath();
+            glyphs.AddString(text, family, (int)Drawing.FontStyle.Bold, 32, Drawing.PointF.Empty, Drawing.StringFormat.GenericTypographic);
+            var bounds = glyphs.GetBounds();
+            var height = text == "—" ? 5f : 28f;
+            var width = Math.Min(30f, bounds.Width * height / bounds.Height);
+            using var transform = new Drawing.Drawing2D.Matrix(width / bounds.Width, 0, 0, height / bounds.Height,
+                (32 - width) / 2 - bounds.X * width / bounds.Width, (32 - height) / 2 - bounds.Y * height / bounds.Height);
+            glyphs.Transform(transform);
+            using var brush = new Drawing.SolidBrush(Drawing.Color.FromArgb(226, 255, 245));
+            g.FillPath(brush, glyphs);
         }
         var handle = bitmap.GetHicon();
         try { using var borrowed = Drawing.Icon.FromHandle(handle); var previous = tray.Icon; tray.Icon = (Drawing.Icon)borrowed.Clone(); previous?.Dispose(); }
@@ -289,12 +311,31 @@ public partial class MainWindow : Window
             await Dispatcher.Yield(DispatcherPriority.ApplicationIdle);
             if (ActualWidth != 340 || Details.Visibility != Visibility.Visible) throw new Exception($"Initial sign-in panel is clipped: {ActualWidth}");
             usage = DemoUsage(); signedIn = true;
+            UpdateTray("84");
+            using (var iconBitmap = tray.Icon!.ToBitmap()) {
+                var top = iconBitmap.Height; var bottom = -1;
+                for (var y = 0; y < iconBitmap.Height; y++) for (var x = 0; x < iconBitmap.Width; x++) {
+                    var pixel = iconBitmap.GetPixel(x, y);
+                    if (pixel.R > 150 && pixel.G > 150 && pixel.B > 150) { top = Math.Min(top, y); bottom = Math.Max(bottom, y); }
+                }
+                if (bottom - top + 1 < 26) throw new Exception($"Tray digits too small: {bottom - top + 1}px");
+                iconBitmap.Save(Path.Combine(smokeOutput!, "tray-84.png"));
+            }
             ApplyTheme(false); SetExpanded(false); Render(); await Dispatcher.Yield(DispatcherPriority.ApplicationIdle);
             if (Percent.Text != "86%" || Width != 190 || Details.Visibility != Visibility.Collapsed || !tray.Visible) throw new Exception("Compact view / tray");
             Capture("compact.png");
             SetExpanded(true); await Dispatcher.Yield(DispatcherPriority.ApplicationIdle);
             if (LimitCards.Children.Count != 3 || Width != 340 || Details.Visibility != Visibility.Visible) throw new Exception("Details");
             Capture("expanded.png");
+            if (FindName("FloatingCheck") is not System.Windows.Controls.CheckBox floating) throw new Exception("Missing floating window switch");
+            floating.IsChecked = false; floating.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
+            if (IsVisible) throw new Exception("Floating off should hide the pill");
+            using (var savedJson = JsonDocument.Parse(JsonSerializer.Serialize(storage.Read<Settings>("settings.json"))))
+                if (savedJson.RootElement.GetProperty("Floating").GetBoolean()) throw new Exception("Floating preference was not saved");
+            ShowPanel(); SetExpanded(false); if (IsVisible) throw new Exception("Tray-only details must close without restoring a pill");
+            floating.IsChecked = true; floating.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
+            if (!IsVisible || expanded) throw new Exception("Floating on should restore the compact pill");
+            SetExpanded(true);
             ((System.Windows.Controls.Button)LimitCards.Children[1]).RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
             if (Percent.Text != "74%") throw new Exception("Limit selection");
             ApplyTheme(true); Render(); await Dispatcher.Yield(DispatcherPriority.ApplicationIdle); Capture("light.png");
@@ -304,7 +345,7 @@ public partial class MainWindow : Window
             HideClick(this, new()); if (IsVisible) throw new Exception("Hide"); ShowPanel(); if (!IsVisible) throw new Exception("Restore");
             SetExpanded(false); SaveSettings();
             var saved = storage.Read<Settings>("settings.json"); if (saved?.WindowIndex != 1 || saved.Pinned) throw new Exception("Preferences persistence");
-            File.WriteAllText(Path.Combine(smokeOutput!, "smoke-result.txt"), "PASS: initial sign-in width, compact, expand, three limit cards, select limit, light/dark render, stale indicator, pin, hide/restore, settings persistence, tray.\n");
+            File.WriteAllText(Path.Combine(smokeOutput!, "smoke-result.txt"), "PASS: initial sign-in width, large tray digits, floating on/off persistence, tray-only details, compact, expand, three limit cards, select limit, light/dark render, stale indicator, pin, hide/restore, settings persistence, tray.\n");
             Close();
         } catch (Exception e) { File.WriteAllText(Path.Combine(smokeOutput!, "smoke-result.txt"), e.ToString()); System.Windows.Application.Current.Shutdown(1); }
     }

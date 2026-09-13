@@ -29,4 +29,4 @@ public class Storage(string directory)
     public void ClearSession() { File.Delete(FilePath("session.bin")); File.Delete(FilePath("usage.json")); CompleteReset(); }
     private record Pending(string AccountId, string RequestId);
 }
-public record Settings(double? Left = null, double? Top = null, bool Pinned = true, bool Notify = true, int WindowIndex = 0);
+public record Settings(double? Left = null, double? Top = null, bool Pinned = true, bool Notify = true, int WindowIndex = 0, bool Floating = true);

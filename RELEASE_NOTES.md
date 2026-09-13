@@ -1,12 +1,10 @@
-First native Windows release of Codex Usage.
+Larger tray numbers and a persistent floating-window switch.
 
-- Compact floating percentage/countdown pill, inspired by the Android usage chip.
-- Expandable Codex/Spark limits, reset dates, credit balance and confirmed banked resets.
-- Numeric tray icon, position persistence, light/dark themes and optional Windows startup.
-- Automatic refresh every 15 minutes and after unlock, resume and reconnect; 1% change notifications.
-- ChatGPT device login and Windows DPAPI credential storage.
-- Persisted, account-bound request IDs for safe retries of uncertain reset requests.
+- Tray digits now fill 28 of the 32 source pixels in height (previously 11), with bold, high-contrast lettering. Windows scales the icon to its configured tray size.
+- **Show floating window** in the details panel and tray menu enables/disables the pill, with the choice saved across restarts.
+- Tray-only mode still opens details on click and hides them when collapsed.
+- Preserves your existing ChatGPT login and preferences.
 
 Download the standalone **win-x64.exe** and run it. No .NET installation required. SHA-256 checksum included. The executable is unsigned.
 
-Validation: 34 automated data/authentication/storage checks; WPF smoke test against the published executable, including initial sign-in panel sizing. Live ChatGPT sign-in confirmed by the user. Authentication fixtures and preview images use synthetic data; spending a real reset credit is not part of acceptance.
+Validation: 34 data/authentication/storage checks; published-executable WPF smoke checks include tray glyph bounds, floating on/off persistence, tray-only details, sign-in panel width, theme rendering and existing controls. Live authentication and usage fetching verified; no real reset credit was spent.

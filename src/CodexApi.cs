@@ -14,7 +14,7 @@ public class CodexApi(Storage storage, HttpClient? http = null)
     {
         using (request)
         {
-            request.Headers.UserAgent.ParseAdd("codex-usage-windows/0.1.0");
+            request.Headers.UserAgent.ParseAdd("codex-usage-windows/0.1.1");
             request.Headers.Accept.Add(new("application/json"));
             using var response = await client.SendAsync(request, ct);
             if (!response.IsSuccessStatusCode) throw new HttpRequestException($"HTTP {(int)response.StatusCode}", null, response.StatusCode);
