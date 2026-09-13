@@ -76,11 +76,13 @@ public partial class MainWindow : Window
     }
     private async void OnLoaded(object sender, RoutedEventArgs e)
     {
+        // Wait until WPF finishes creating the native window before resizing it.
+        await Dispatcher.Yield(DispatcherPriority.ContextIdle);
         if (settings.Left is double x && settings.Top is double y && double.IsFinite(x) && double.IsFinite(y)) { Left = x; Top = y; KeepVisible(); } else Dock();
-        if (demo) { usage = DemoUsage(); signedIn = true; }
+        if (demo && smokeOutput == null) { usage = DemoUsage(); signedIn = true; }
         Render();
-        if (smokeOutput != null) { await RunSmoke(); return; }
         if (!signedIn) SetExpanded(true);
+        if (smokeOutput != null) { await RunSmoke(); return; }
         timer.Start();
         await Refresh();
     }
@@ -174,13 +176,13 @@ public partial class MainWindow : Window
         if (closing) return;
         var selected = usage?.Windows.ElementAtOrDefault(Math.Clamp(settings.WindowIndex, 0, Math.Max(0, usage.Windows.Count - 1)));
         var stale = usage != null && (error != null || DateTimeOffset.UtcNow - usage.FetchedAt > TimeSpan.FromMinutes(16));
-        Percent.Text = selected == null ? "Sign in" : $"{selected.Remaining}%";
+        Percent.Text = selected == null ? signedIn ? "—" : "Sign in" : $"{selected.Remaining}%";
         Countdown.Text = selected == null ? "" : (stale ? "! " : "↻ ") + Usage.Countdown(selected.ResetAt, DateTimeOffset.UtcNow);
         Handle.ToolTip = selected == null ? "Click to sign in with ChatGPT" : $"{selected.Name}: {selected.Remaining}% remaining\n{(stale ? "STALE · " : "")}{error ?? "Click for details · drag to move"}";
         UpdateTray(selected == null ? "—" : stale ? "!" : selected.Remaining.ToString());
         tray.Text = selected == null ? "Codex Usage · Sign in" : $"Codex · {selected.Remaining}% left · {Usage.Countdown(selected.ResetAt, DateTimeOffset.UtcNow)}{(stale ? " · stale" : "")}";
         PlanLabel.Text = demo ? "DEMO DATA" : usage?.Plan.ToUpperInvariant() ?? "";
-        StatusLabel.Text = error ?? (busy ? "Refreshing…" : usage != null ? $"{(stale ? "Stale · " : "")}Updated {usage.FetchedAt.LocalDateTime:g}" : "Sign in securely with your ChatGPT account.");
+        StatusLabel.Text = error ?? (login != null ? "Waiting for browser authorization…" : busy ? "Refreshing…" : usage != null ? $"{(stale ? "Stale · " : "")}Updated {usage.FetchedAt.LocalDateTime:g}" : "Sign in securely with your ChatGPT account.");
         if (signedIn) AccountLabel.Text = demo ? "Preview · no account connected" : "Connected to ChatGPT";
         CreditsLabel.Text = usage == null ? "" : $"{usage.Resets} banked resets" + (usage.Balance == null ? "" : $" · Credit balance: {usage.Balance}");
         SignInButton.Visibility = signedIn ? Visibility.Collapsed : Visibility.Visible;
@@ -284,6 +286,9 @@ public partial class MainWindow : Window
     {
         try {
             Directory.CreateDirectory(smokeOutput!);
+            await Dispatcher.Yield(DispatcherPriority.ApplicationIdle);
+            if (ActualWidth != 340 || Details.Visibility != Visibility.Visible) throw new Exception($"Initial sign-in panel is clipped: {ActualWidth}");
+            usage = DemoUsage(); signedIn = true;
             ApplyTheme(false); SetExpanded(false); Render(); await Dispatcher.Yield(DispatcherPriority.ApplicationIdle);
             if (Percent.Text != "86%" || Width != 190 || Details.Visibility != Visibility.Collapsed || !tray.Visible) throw new Exception("Compact view / tray");
             Capture("compact.png");
@@ -299,7 +304,7 @@ public partial class MainWindow : Window
             HideClick(this, new()); if (IsVisible) throw new Exception("Hide"); ShowPanel(); if (!IsVisible) throw new Exception("Restore");
             SetExpanded(false); SaveSettings();
             var saved = storage.Read<Settings>("settings.json"); if (saved?.WindowIndex != 1 || saved.Pinned) throw new Exception("Preferences persistence");
-            File.WriteAllText(Path.Combine(smokeOutput!, "smoke-result.txt"), "PASS: compact, expand, three limit cards, select limit, light/dark render, stale indicator, pin, hide/restore, settings persistence, tray.\n");
+            File.WriteAllText(Path.Combine(smokeOutput!, "smoke-result.txt"), "PASS: initial sign-in width, compact, expand, three limit cards, select limit, light/dark render, stale indicator, pin, hide/restore, settings persistence, tray.\n");
             Close();
         } catch (Exception e) { File.WriteAllText(Path.Combine(smokeOutput!, "smoke-result.txt"), e.ToString()); System.Windows.Application.Current.Shutdown(1); }
     }
