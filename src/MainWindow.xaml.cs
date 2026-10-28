@@ -52,7 +52,7 @@ public partial class MainWindow : Window
         menu.Items.Add("Show / hide", null, (_, _) => { if (IsVisible) Hide(); else ShowPanel(); });
         floatingMenu.Click += (_, _) => SetFloating(floatingMenu.Checked);
         menu.Items.Add(floatingMenu);
-        menu.Items.Add("Refresh now", null, async (_, _) => await Refresh());
+        menu.Items.Add("Refresh now", null, async (_, _) => await Refresh("manual"));
         menu.Items.Add("Move near taskbar", null, (_, _) => { Dock(); Show(); SaveSettings(); });
         menu.Items.Add("Exit", null, (_, _) => Close());
         tray.ContextMenuStrip = menu;
@@ -61,10 +61,10 @@ public partial class MainWindow : Window
         UpdateTray("—"); tray.Visible = true;
         var context = new ContextMenu();
         void Item(string label, Action action) { var item = new MenuItem { Header = label }; item.Click += (_, _) => action(); context.Items.Add(item); }
-        Item("Refresh", async () => await Refresh()); Item("Move near taskbar", () => { Dock(); SaveSettings(); }); Item("Hide to tray", Hide); Item("Exit", Close);
+        Item("Refresh", async () => await Refresh("manual")); Item("Move near taskbar", () => { Dock(); SaveSettings(); }); Item("Hide to tray", Hide); Item("Exit", Close);
         Handle.ContextMenu = context;
         Loaded += OnLoaded;
-        timer.Tick += async (_, _) => { ApplyTheme(IsLightTheme()); Render(); if (DateTimeOffset.UtcNow - lastAttempt >= TimeSpan.FromMinutes(15)) await Refresh(); };
+        timer.Tick += async (_, _) => { ApplyTheme(IsLightTheme()); Render(); if (DateTimeOffset.UtcNow - lastAttempt >= TimeSpan.FromMinutes(15)) await Refresh("timer"); };
         SystemEvents.SessionSwitch += OnSessionSwitch;
         SystemEvents.PowerModeChanged += OnPowerChanged;
         SystemEvents.DisplaySettingsChanged += OnDisplayChanged;
@@ -89,13 +89,13 @@ public partial class MainWindow : Window
         else if (!settings.Floating) Hide();
         if (smokeOutput != null) { await RunSmoke(); return; }
         timer.Start();
-        await Refresh();
+        await Refresh("startup");
     }
-    private void OnSessionSwitch(object sender, SessionSwitchEventArgs e) { if (e.Reason == SessionSwitchReason.SessionUnlock) QueueRefresh(); }
-    private void OnPowerChanged(object sender, PowerModeChangedEventArgs e) { if (e.Mode == PowerModes.Resume) QueueRefresh(); }
-    private void OnNetworkChanged(object? sender, NetworkAvailabilityEventArgs e) { if (e.IsAvailable) QueueRefresh(); }
+    private void OnSessionSwitch(object sender, SessionSwitchEventArgs e) { if (e.Reason == SessionSwitchReason.SessionUnlock) QueueRefresh("unlock"); }
+    private void OnPowerChanged(object sender, PowerModeChangedEventArgs e) { if (e.Mode == PowerModes.Resume) QueueRefresh("resume"); }
+    private void OnNetworkChanged(object? sender, NetworkAvailabilityEventArgs e) { if (e.IsAvailable) QueueRefresh("network-restored"); }
     private void OnDisplayChanged(object? sender, EventArgs e) { if (!closing) Dispatcher.BeginInvoke(KeepVisible); }
-    private void QueueRefresh() { if (!closing) Dispatcher.BeginInvoke(async () => await Refresh()); }
+    private void QueueRefresh(string trigger) { if (!closing) Dispatcher.BeginInvoke(async () => await Refresh(trigger)); }
     private void Dock() { Left = SystemParameters.WorkArea.Right - Width - 18; Top = SystemParameters.WorkArea.Bottom - ActualHeight - 12; }
     private void KeepVisible()
     {
@@ -158,22 +158,33 @@ public partial class MainWindow : Window
     }
     private void HideClick(object sender, RoutedEventArgs e) { SetExpanded(false); Hide(); }
     private void ExitClick(object sender, RoutedEventArgs e) => Close();
-    private async void RefreshClick(object sender, RoutedEventArgs e) => await Refresh();
-    private async Task Refresh()
+    private async void RefreshClick(object sender, RoutedEventArgs e) => await Refresh("manual");
+    private async Task Refresh(string trigger)
     {
-        if (busy || !signedIn || demo || closing) return;
+        if (busy) { if (signedIn && !demo && !closing) storage.Log.RecordSkipped(trigger, "busy"); return; }
+        if (!signedIn || demo || closing) return;
         busy = true; lastAttempt = DateTimeOffset.UtcNow; Render();
-        try { await FetchAndRender(); }
+        try { await FetchAndRender(trigger); }
         catch (Exception e) { error = FriendlyError(e); }
         finally { busy = false; if (!closing) Render(); }
     }
-    private async Task FetchAndRender()
+    private async Task FetchAndRender(string trigger)
     {
-        var next = await api.Fetch(lifetime.Token);
-        storage.Save("usage.json", next);
-        var delta = Usage.Change(usage?.Windows.FirstOrDefault()?.Remaining, next.Windows[0].Remaining);
-        usage = next; error = null;
-        if (settings.Notify && delta != null) tray.ShowBalloonTip(5000, "Codex usage changed", $"{next.Windows[0].Remaining}% remaining ({delta:+0;-0}%). Resets in {Usage.Countdown(next.Windows[0].ResetAt, DateTimeOffset.UtcNow)}.", Forms.ToolTipIcon.Info);
+        var started = Stopwatch.GetTimestamp();
+        var previous = usage;
+        Usage? next = null;
+        try {
+            next = await api.Fetch(lifetime.Token);
+            storage.Save("usage.json", next);
+        } catch (Exception e) {
+            storage.Log.RecordFetch(trigger, Stopwatch.GetElapsedTime(started), previous, next, e);
+            throw;
+        }
+        var updated = next!;
+        var delta = Usage.Change(previous?.Windows.FirstOrDefault()?.Remaining, updated.Windows[0].Remaining);
+        usage = updated; error = null;
+        storage.Log.RecordFetch(trigger, Stopwatch.GetElapsedTime(started), previous, updated, null);
+        if (settings.Notify && delta != null) tray.ShowBalloonTip(5000, "Codex usage changed", $"{updated.Windows[0].Remaining}% remaining ({delta:+0;-0}%). Resets in {Usage.Countdown(updated.Windows[0].ResetAt, DateTimeOffset.UtcNow)}.", Forms.ToolTipIcon.Info);
     }
     private static string FriendlyError(Exception e) => e switch {
         HttpRequestException { StatusCode: HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden } => "Session rejected. Sign out and sign in again.",
@@ -234,7 +245,7 @@ public partial class MainWindow : Window
             StatusLabel.Text = "Waiting for browser authorization…";
             OpenBrowser();
             await api.FinishLogin(code, login.Token);
-            signedIn = true; recovery = false; pendingReset = false; usage = null; await FetchAndRender();
+            signedIn = true; recovery = false; pendingReset = false; usage = null; await FetchAndRender("sign-in");
         } catch (Exception ex) { error = FriendlyError(ex); }
         finally { login.Dispose(); login = null; busy = false; LoginPanel.Visibility = Visibility.Collapsed; DeviceCodeText.Clear(); if (!closing) Render(); }
     }
@@ -254,7 +265,7 @@ public partial class MainWindow : Window
         if (busy || !signedIn || demo) return;
         busy = true; Render();
         try {
-            await FetchAndRender(); Render();
+            await FetchAndRender("reset-precheck"); Render();
             if (usage!.Resets < 1 && !pendingReset) { error = "No banked resets are available."; return; }
             var message = pendingReset ? "Retry the pending reset with the same request ID? If it was already redeemed, no additional credit will be spent." : "Use one banked reset? This spends one reset credit and resets the eligible usage windows.";
             if (System.Windows.MessageBox.Show(this, message, "Confirm usage reset", MessageBoxButton.YesNo, MessageBoxImage.Question, MessageBoxResult.No) != MessageBoxResult.Yes) return;
@@ -263,7 +274,7 @@ public partial class MainWindow : Window
             pendingReset = false;
             error = null;
             System.Windows.MessageBox.Show(this, result switch { "reset" => "Usage reset completed.", "already_redeemed" => "This request was already redeemed. No additional credit was spent.", "no_credit" => "No reset credit is available.", _ => "No usage window needs a reset." }, "Codex Usage");
-            await FetchAndRender();
+            await FetchAndRender("reset-postcheck");
         } catch (Exception ex) { error = FriendlyError(ex) + " If a reset was sent, retry Use reset safely with the saved request ID."; }
         finally { busy = false; if (!closing) Render(); }
     }

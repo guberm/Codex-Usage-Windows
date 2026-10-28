@@ -1,4 +1,4 @@
-param([string]$Version = '0.1.1')
+param([string]$Version = '0.1.2')
 $ErrorActionPreference = 'Stop'
 Set-Location $PSScriptRoot
 dotnet run --project tests/Checks.csproj -c Release

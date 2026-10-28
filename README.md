@@ -6,7 +6,7 @@ A tiny, native Windows companion for Codex usage. Keep a **190 × 36 DIP floatin
 
 ## Download and run
 
-1. Download `Codex-Usage-Windows-v0.1.1-win-x64.exe` from [Releases](https://github.com/guberm/Codex-Usage-Windows/releases/latest).
+1. Download `Codex-Usage-Windows-v0.1.2-win-x64.exe` from [Releases](https://github.com/guberm/Codex-Usage-Windows/releases/latest).
 2. Keep it in a permanent folder and run it. Windows 10/11 x64; no separate .NET installation or administrator rights required.
 3. Click **Sign in with ChatGPT**, enter the displayed code in the browser, and authorize your account. If requested, enable device code authorization under ChatGPT **Settings → Security**.
 4. Click the header to collapse. Drag the pill where you want it. Right-click for refresh, positioning, hide and exit.
@@ -35,11 +35,11 @@ This is a floating window above the taskbar work area, not an embedded Windows t
 
 ## Privacy and authentication
 
-Uses the same device authorization flow and usage/reset API contract as [Codex Usage for Android](https://github.com/guberm/Codex-Usage-Android). No API keys, browser cookies or imported Codex sessions. OAuth credentials are encrypted with **Windows DPAPI, CurrentUser**, in `%LOCALAPPDATA%\CodexUsage\session.bin`. Settings, cached usage and the account-bound pending reset ID are local files in the same folder. No telemetry or third-party server is used.
+Uses the same device authorization flow and usage/reset API contract as [Codex Usage for Android](https://github.com/guberm/Codex-Usage-Android). No API keys, browser cookies or imported Codex sessions. OAuth credentials are encrypted with **Windows DPAPI, CurrentUser**, in `%LOCALAPPDATA%\CodexUsage\session.bin`. Settings, cached usage and the account-bound pending reset ID are local files in the same folder. A local refresh journal (`activity.jsonl` plus one rotated `activity.1.jsonl`, each at most 1 MiB) records UTC time, refresh source, result and duration, HTTP status/error type, and prior/current limit names, percentages and reset times. It does not contain tokens, authorization headers, device codes, account identifiers, reset request IDs or raw response bodies. No telemetry or third-party server is used.
 
 Requests go to `auth.openai.com` for authentication and `chatgpt.com/backend-api/wham/` for usage and resets. This internal API may change; the app is an unofficial companion and is not affiliated with OpenAI. Local DPAPI protection does not protect against malicious software already running as your Windows user.
 
-**Sign out** deletes stored credentials, usage cache and pending reset state. To remove the app: disable **Start with Windows**, choose **Exit**, delete the executable, and optionally remove `%LOCALAPPDATA%\CodexUsage`.
+**Sign out** deletes stored credentials, usage cache, pending reset state and both refresh-journal files. To remove the app: disable **Start with Windows**, choose **Exit**, delete the executable, and optionally remove `%LOCALAPPDATA%\CodexUsage`.
 
 ## Build and verify
 
@@ -49,7 +49,7 @@ Windows with the .NET 10 SDK:
 ./build.ps1
 ```
 
-Produces a self-contained single-file x64 executable and SHA-256 checksum in `artifacts/release/`. Runs 34 dependency-free checks for parsing, null fields, rounding, account claims, DPAPI, device code parsing, token refresh, and reset idempotency. Then launches the published executable for a WPF smoke test: compact/expanded views, limit selection, themes, stale status, pinning, hide/restore, tray and persisted preferences. Images and the result are saved in `artifacts/smoke/`.
+Produces a self-contained single-file x64 executable and SHA-256 checksum in `artifacts/release/`. Runs dependency-free checks for parsing, null fields, rounding, account claims, DPAPI, device-code parsing, token refresh, reset idempotency, and bounded local refresh logging. Then launches the published executable for a WPF smoke test: compact/expanded views, limit selection, themes, stale status, pinning, hide/restore, tray and persisted preferences. Images and the result are saved in `artifacts/smoke/`.
 
 ```powershell
 dotnet run --project tests/Checks.csproj

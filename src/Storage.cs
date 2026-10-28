@@ -4,6 +4,7 @@ using System.Text.Json;
 namespace CodexUsage;
 public class Storage(string directory)
 {
+    public UsageLog Log { get; } = new(directory);
     private string FilePath(string name) => Path.Combine(directory, name);
     public void Write(string name, byte[] bytes)
     {
@@ -26,7 +27,7 @@ public class Storage(string directory)
     }
     public void CompleteReset() => File.Delete(FilePath("pending-reset.json"));
     public bool HasPendingReset(string accountId) => Read<Pending>("pending-reset.json")?.AccountId == accountId;
-    public void ClearSession() { File.Delete(FilePath("session.bin")); File.Delete(FilePath("usage.json")); CompleteReset(); }
+    public void ClearSession() { Log.Clear(); File.Delete(FilePath("session.bin")); File.Delete(FilePath("usage.json")); CompleteReset(); }
     private record Pending(string AccountId, string RequestId);
 }
 public record Settings(double? Left = null, double? Top = null, bool Pinned = true, bool Notify = true, int WindowIndex = 0, bool Floating = true);

@@ -44,8 +44,11 @@ try {
     storage.CompleteReset();
     Check(!storage.HasPendingReset(session.AccountId), "Completed reset is not pending");
     Check(storage.PendingReset(session.AccountId) != requestId, "Completed reset gets a new ID");
+    File.WriteAllText(Path.Combine(directory, "activity.jsonl"), "{}\n");
+    File.WriteAllText(Path.Combine(directory, "activity.1.jsonl"), "{}\n");
     storage.ClearSession();
     Check(storage.LoadSession() == null, "Sign out deletes credentials");
+    Check(!File.Exists(Path.Combine(directory, "activity.jsonl")) && !File.Exists(Path.Combine(directory, "activity.1.jsonl")), "Sign out deletes current and rotated refresh logs");
     var calls = new List<string>();
     var handler = new FakeHandler(async request => {
         calls.Add(request.RequestUri!.AbsolutePath);
@@ -72,7 +75,63 @@ try {
     var deviceApi = new CodexApi(storage, new HttpClient(new FakeHandler(request => Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("{\"device_auth_id\":\"test\",\"usercode\":\"ABCD-EFGH\",\"interval\":\"5\"}") }))));
     var device = await deviceApi.StartLogin(CancellationToken.None);
     Check(device.Code == "ABCD-EFGH" && device.Interval == 5, "Device login accepts alternate code key and string interval");
-} finally { Directory.Delete(directory, true); }
+} finally { if (Directory.Exists(directory)) Directory.Delete(directory, true); }
+var usageLogType = typeof(Storage).Assembly.GetType("CodexUsage.UsageLog");
+Check(usageLogType != null, "UsageLog records local refresh diagnostics");
+var recordFetch = usageLogType!.GetMethod("RecordFetch", new[] { typeof(string), typeof(TimeSpan), typeof(Usage), typeof(Usage), typeof(Exception) });
+Check(recordFetch != null, "UsageLog exposes the fetch record contract");
+var recordSkipped = usageLogType.GetMethod("RecordSkipped", new[] { typeof(string), typeof(string) });
+Check(recordSkipped != null, "UsageLog exposes the busy-skip record contract");
+object CreateLog(string path) => Activator.CreateInstance(usageLogType, new object?[] { path })!;
+void RecordFetch(object logger, string trigger, TimeSpan elapsed, Usage? previous, Usage? current, Exception? error) =>
+    recordFetch!.Invoke(logger, new object?[] { trigger, elapsed, previous, current, error });
+var logDirectory = Path.Combine(Path.GetTempPath(), "codex-usage-log-check-" + Guid.NewGuid());
+try {
+    var logger = CreateLog(logDirectory);
+    var before = new Usage("pro", new() { new("Codex · Primary", 97, 2000000000, 18000) }, 0, null, DateTimeOffset.UtcNow);
+    var after = new Usage("pro", new() { new("Codex · Primary", 40, 2000001000, 18000) }, 0, null, DateTimeOffset.UtcNow);
+    RecordFetch(logger, "manual", TimeSpan.FromMilliseconds(125), before, after, null);
+    var logPath = Path.Combine(logDirectory, "activity.jsonl");
+    var lines = File.ReadAllLines(logPath);
+    using (var successEvent = JsonDocument.Parse(lines[0])) {
+        var root = successEvent.RootElement;
+        Check(root.GetProperty("timestampUtc").GetDateTimeOffset().Offset == TimeSpan.Zero && root.GetProperty("trigger").GetString() == "manual" && root.GetProperty("outcome").GetString() == "success" && root.GetProperty("elapsedMilliseconds").GetInt64() == 125, "Success log records UTC time, cause, result, and duration");
+        Check(root.GetProperty("previous")[0].GetProperty("remaining").GetInt32() == 97 && root.GetProperty("previous")[0].GetProperty("resetAt").GetInt64() == 2000000000, "Success log preserves old percentage and reset time");
+        Check(root.GetProperty("current")[0].GetProperty("remaining").GetInt32() == 40 && root.GetProperty("current")[0].GetProperty("resetAt").GetInt64() == 2000001000, "Success log preserves new percentage and reset time");
+    }
+    const string secretToken = "Bearer fake-access-token-123";
+    const string secretAccount = "private-account-456";
+    var failure = new HttpRequestException("Authorization: " + secretToken + " account_id=" + secretAccount, null, HttpStatusCode.Unauthorized);
+    RecordFetch(logger, "timer", TimeSpan.FromMilliseconds(9), after, null, failure);
+    var failureLine = File.ReadAllLines(logPath).Last();
+    using (var failureEvent = JsonDocument.Parse(failureLine)) {
+        var root = failureEvent.RootElement;
+        Check(root.GetProperty("outcome").GetString() == "failure" && root.GetProperty("httpStatus").GetInt32() == 401 && root.GetProperty("errorType").GetString() == "HttpRequestException", "Failure log records only safe status and error type");
+    }
+    Check(!failureLine.Contains(secretToken, StringComparison.Ordinal) && !failureLine.Contains(secretAccount, StringComparison.Ordinal) && !failureLine.Contains("Authorization:", StringComparison.Ordinal), "Failure log omits exception message and secrets");
+    recordSkipped!.Invoke(logger, new object?[] { "unlock", "busy" });
+    using (var skippedEvent = JsonDocument.Parse(File.ReadAllLines(logPath).Last()))
+        Check(skippedEvent.RootElement.GetProperty("trigger").GetString() == "unlock" && skippedEvent.RootElement.GetProperty("outcome").GetString() == "skipped" && skippedEvent.RootElement.GetProperty("reason").GetString() == "busy", "Busy refresh signal is logged as skipped");
+
+    var rotateDirectory = Path.Combine(logDirectory, "rotation");
+    var rotateLogger = CreateLog(rotateDirectory);
+    var largeUsage = new Usage("pro", new() { new(new string('w', 550_000), 80, 2000000000, 18000) }, 0, null, DateTimeOffset.UtcNow);
+    for (var i = 0; i < 3; i++) RecordFetch(rotateLogger, "timer", TimeSpan.Zero, null, largeUsage, null);
+    var rotatedPath = Path.Combine(rotateDirectory, "activity.1.jsonl");
+    var currentLength = new FileInfo(Path.Combine(rotateDirectory, "activity.jsonl")).Length;
+    var rotatedLength = new FileInfo(rotatedPath).Length;
+    Check(File.Exists(rotatedPath) && currentLength <= 1_048_576 && rotatedLength <= 1_048_576, "Rotation retains one backup and bounds both files to 1 MiB");
+    var oversizedUsage = new Usage("pro", new() { new(new string('x', 1_100_000), 80, 2000000000, 18000) }, 0, null, DateTimeOffset.UtcNow);
+    RecordFetch(rotateLogger, "timer", TimeSpan.Zero, null, oversizedUsage, null);
+    Check(new FileInfo(Path.Combine(rotateDirectory, "activity.jsonl")).Length <= 1_048_576 && new FileInfo(rotatedPath).Length <= 1_048_576, "Oversized record cannot exceed the rotation bound");
+
+    var blocker = Path.Combine(logDirectory, "not-a-directory");
+    File.WriteAllText(blocker, "x");
+    var blockedLogger = CreateLog(Path.Combine(blocker, "child"));
+    var bestEffort = true;
+    try { RecordFetch(blockedLogger, "manual", TimeSpan.Zero, null, after, null); } catch { bestEffort = false; }
+    Check(bestEffort, "Log I/O failure does not escape into refresh");
+} finally { if (Directory.Exists(logDirectory)) Directory.Delete(logDirectory, true); }
 Console.WriteLine($"PASS: {checks} checks");
 
 sealed class FakeHandler(Func<HttpRequestMessage, Task<HttpResponseMessage>> send) : HttpMessageHandler {
