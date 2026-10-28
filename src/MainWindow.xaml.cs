@@ -24,7 +24,6 @@ public partial class MainWindow : Window
     private readonly bool demo;
     private readonly string? smokeOutput;
     private readonly Forms.NotifyIcon tray = new();
-    private readonly Forms.ToolStripMenuItem floatingMenu = new("Show floating window") { CheckOnClick = true };
     private readonly DispatcherTimer timer = new() { Interval = TimeSpan.FromSeconds(30) };
     private readonly CancellationTokenSource lifetime = new();
     private CancellationTokenSource? login;
@@ -45,13 +44,11 @@ public partial class MainWindow : Window
         catch (Exception e) when (e is IOException or UnauthorizedAccessException or JsonException or CryptographicException) { error = "Could not load saved data. Sign out, then sign in again."; recovery = true; }
         Topmost = settings.Pinned; PinnedCheck.IsChecked = settings.Pinned;
         NotifyCheck.IsChecked = settings.Notify;
-        FloatingCheck.IsChecked = floatingMenu.Checked = settings.Floating;
+        IntervalBox.SelectedIndex = ClampIntervalIndex(settings.RefreshMinutes);
         using (var key = Registry.CurrentUser.OpenSubKey(RunKey)) StartupCheck.IsChecked = key?.GetValue("CodexUsage") != null;
         ApplyTheme(IsLightTheme());
         var menu = new Forms.ContextMenuStrip();
         menu.Items.Add("Show / hide", null, (_, _) => { if (IsVisible) Hide(); else ShowPanel(); });
-        floatingMenu.Click += (_, _) => SetFloating(floatingMenu.Checked);
-        menu.Items.Add(floatingMenu);
         menu.Items.Add("Refresh now", null, async (_, _) => await Refresh("manual"));
         menu.Items.Add("Move near taskbar", null, (_, _) => { Dock(); Show(); SaveSettings(); });
         menu.Items.Add("Exit", null, (_, _) => Close());
@@ -64,7 +61,7 @@ public partial class MainWindow : Window
         Item("Refresh", async () => await Refresh("manual")); Item("Move near taskbar", () => { Dock(); SaveSettings(); }); Item("Hide to tray", Hide); Item("Exit", Close);
         Handle.ContextMenu = context;
         Loaded += OnLoaded;
-        timer.Tick += async (_, _) => { ApplyTheme(IsLightTheme()); Render(); if (DateTimeOffset.UtcNow - lastAttempt >= TimeSpan.FromMinutes(15)) await Refresh("timer"); };
+        timer.Tick += async (_, _) => { ApplyTheme(IsLightTheme()); Render(); if (DateTimeOffset.UtcNow - lastAttempt >= TimeSpan.FromMinutes(settings.RefreshMinutes)) await Refresh("timer"); };
         SystemEvents.SessionSwitch += OnSessionSwitch;
         SystemEvents.PowerModeChanged += OnPowerChanged;
         SystemEvents.DisplaySettingsChanged += OnDisplayChanged;
@@ -86,7 +83,6 @@ public partial class MainWindow : Window
         if (demo && smokeOutput == null) { usage = DemoUsage(); signedIn = true; }
         Render();
         if (!signedIn) SetExpanded(true);
-        else if (!settings.Floating) Hide();
         if (smokeOutput != null) { await RunSmoke(); return; }
         timer.Start();
         await Refresh("startup");
@@ -117,17 +113,8 @@ public partial class MainWindow : Window
         UpdateLayout();
         Left = oldRight - ActualWidth; Top = oldBottom - ActualHeight;
         KeepVisible();
-        if (!value && !settings.Floating) Hide();
+        if (!value) Hide();
     }
-    private void SetFloating(bool enabled)
-    {
-        settings = settings with { Floating = enabled };
-        FloatingCheck.IsChecked = floatingMenu.Checked = enabled;
-        SetExpanded(false);
-        if (enabled) Show(); else Hide();
-        TrySaveSettings();
-    }
-    private void FloatingChanged(object sender, RoutedEventArgs e) => SetFloating(FloatingCheck.IsChecked == true);
     private void SaveSettings()
     {
         // Persist the compact position even if the details panel is open.
@@ -147,6 +134,17 @@ public partial class MainWindow : Window
     protected override void OnKeyDown(System.Windows.Input.KeyEventArgs e) { base.OnKeyDown(e); if (e.Key == Key.Escape) SetExpanded(false); }
     private void PinChanged(object sender, RoutedEventArgs e) { Topmost = PinnedCheck.IsChecked == true; TrySaveSettings(); }
     private void NotifyChanged(object sender, RoutedEventArgs e) { settings = settings with { Notify = NotifyCheck.IsChecked == true }; TrySaveSettings(); }
+    private void IntervalChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
+    {
+        // The constructor preselects the saved interval before the window has coordinates; saving then would persist NaN.
+        if (!IsLoaded) return;
+        if (IntervalBox.SelectedItem is System.Windows.Controls.ComboBoxItem item && item.Tag is string tag && int.TryParse(tag, out var minutes))
+        {
+            settings = settings with { RefreshMinutes = minutes };
+            TrySaveSettings();
+        }
+    }
+    private static int ClampIntervalIndex(int minutes) => minutes switch { <= 5 => 0, <= 10 => 1, <= 15 => 2, <= 30 => 3, _ => 4 };
     private void TrySaveSettings() { try { SaveSettings(); } catch (Exception e) when (e is IOException or UnauthorizedAccessException) { StatusLabel.Text = "Could not save preferences."; } }
     private void StartupChanged(object sender, RoutedEventArgs e)
     {
@@ -229,7 +227,7 @@ public partial class MainWindow : Window
             row.Children.Add(new TextBlock { Text = w.Name, TextTrimming = TextTrimming.CharacterEllipsis }); panel.Children.Add(row);
             panel.Children.Add(new ProgressBar { Minimum = 0, Maximum = 100, Value = w.Remaining, Height = 4, Margin = new Thickness(0, 9, 0, 7), Foreground = Brush(w.Remaining <= 10 ? "#FF947F" : "#56BFA0"), Background = (Brush)Resources["LineBrush"], BorderThickness = new Thickness(0) });
             panel.Children.Add(new TextBlock { Text = w.ResetAt is long at ? $"Resets {DateTimeOffset.FromUnixTimeSeconds(at).LocalDateTime:g} · {Usage.Countdown(at, DateTimeOffset.UtcNow)}" : "Reset time unavailable", FontSize = 11, Foreground = (Brush)Resources["MutedBrush"], TextWrapping = TextWrapping.Wrap });
-            var button = new System.Windows.Controls.Button { Content = panel, HorizontalContentAlignment = System.Windows.HorizontalAlignment.Stretch, Margin = new Thickness(0, 0, 0, 8), Padding = new Thickness(10), ToolTip = "Show this limit in the floating window", BorderThickness = new Thickness(0) };
+            var button = new System.Windows.Controls.Button { Content = panel, HorizontalContentAlignment = System.Windows.HorizontalAlignment.Stretch, Margin = new Thickness(0, 0, 0, 8), Padding = new Thickness(10), ToolTip = "Show this limit in the window", BorderThickness = new Thickness(0) };
             button.Click += (_, _) => { settings = settings with { WindowIndex = index }; TrySaveSettings(); Render(); };
             System.Windows.Automation.AutomationProperties.SetName(button, $"{w.Name}, {w.Remaining}% remaining. Select for compact display");
             LimitCards.Children.Add(button);
@@ -338,17 +336,18 @@ public partial class MainWindow : Window
             SetExpanded(true); await Dispatcher.Yield(DispatcherPriority.ApplicationIdle);
             if (LimitCards.Children.Count != 3 || Width != 340 || Details.Visibility != Visibility.Visible) throw new Exception("Details");
             Capture("expanded.png");
-            if (FindName("FloatingCheck") is not System.Windows.Controls.CheckBox floating) throw new Exception("Missing floating window switch");
-            floating.IsChecked = false; floating.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
-            if (IsVisible) throw new Exception("Floating off should hide the pill");
-            using (var savedJson = JsonDocument.Parse(JsonSerializer.Serialize(storage.Read<Settings>("settings.json"))))
-                if (savedJson.RootElement.GetProperty("Floating").GetBoolean()) throw new Exception("Floating preference was not saved");
-            ShowPanel(); SetExpanded(false); if (IsVisible) throw new Exception("Tray-only details must close without restoring a pill");
-            floating.IsChecked = true; floating.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
-            if (!IsVisible || expanded) throw new Exception("Floating on should restore the compact pill");
+            if (FindName("FloatingCheck") is not null) throw new Exception("Floating window switch should be removed");
+            ShowPanel(); SetExpanded(false); if (IsVisible) throw new Exception("Collapsing details must return to tray-only mode");
+            ShowPanel(); if (!IsVisible || !expanded) throw new Exception("Tray click should restore the details panel");
             SetExpanded(true);
             ((System.Windows.Controls.Button)LimitCards.Children[1]).RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
             if (Percent.Text != "74%") throw new Exception("Limit selection");
+            if (FindName("IntervalBox") is not System.Windows.Controls.ComboBox interval) throw new Exception("Missing auto-refresh interval selector");
+            if (interval.SelectedIndex != 0) throw new Exception($"Default interval should be 5 min, got index {interval.SelectedIndex}");
+            interval.SelectedIndex = 2;
+            if (storage.Read<Settings>("settings.json")?.RefreshMinutes != 15) throw new Exception("Interval preference was not saved");
+            interval.SelectedIndex = 0;
+            if (storage.Read<Settings>("settings.json")?.RefreshMinutes != 5) throw new Exception("Interval preference was not restored");
             ApplyTheme(true); Render(); await Dispatcher.Yield(DispatcherPriority.ApplicationIdle); Capture("light.png");
             usage = usage! with { FetchedAt = DateTimeOffset.UtcNow.AddHours(-1) }; Render();
             if (!Countdown.Text.StartsWith("! ")) throw new Exception("Stale indicator");
@@ -356,7 +355,7 @@ public partial class MainWindow : Window
             HideClick(this, new()); if (IsVisible) throw new Exception("Hide"); ShowPanel(); if (!IsVisible) throw new Exception("Restore");
             SetExpanded(false); SaveSettings();
             var saved = storage.Read<Settings>("settings.json"); if (saved?.WindowIndex != 1 || saved.Pinned) throw new Exception("Preferences persistence");
-            File.WriteAllText(Path.Combine(smokeOutput!, "smoke-result.txt"), "PASS: initial sign-in width, large tray digits, floating on/off persistence, tray-only details, compact, expand, three limit cards, select limit, light/dark render, stale indicator, pin, hide/restore, settings persistence, tray.\n");
+            File.WriteAllText(Path.Combine(smokeOutput!, "smoke-result.txt"), "PASS: initial sign-in width, large tray digits, tray-only mode, compact, expand, three limit cards, select limit, auto-refresh interval, light/dark render, stale indicator, pin, hide/restore, settings persistence, tray.\n");
             Close();
         } catch (Exception e) { File.WriteAllText(Path.Combine(smokeOutput!, "smoke-result.txt"), e.ToString()); System.Windows.Application.Current.Shutdown(1); }
     }

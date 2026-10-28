@@ -77,7 +77,8 @@ try {
     Check(device.Code == "ABCD-EFGH" && device.Interval == 5, "Device login accepts alternate code key and string interval");
 } finally { if (Directory.Exists(directory)) Directory.Delete(directory, true); }
 var usageLogType = typeof(Storage).Assembly.GetType("CodexUsage.UsageLog");
-Check(usageLogType != null, "UsageLog records local refresh diagnostics");
+var settingsDefaults = new Settings();
+Check(settingsDefaults.RefreshMinutes == 5, "Auto-refresh interval defaults to 5 minutes");
 var recordFetch = usageLogType!.GetMethod("RecordFetch", new[] { typeof(string), typeof(TimeSpan), typeof(Usage), typeof(Usage), typeof(Exception) });
 Check(recordFetch != null, "UsageLog exposes the fetch record contract");
 var recordSkipped = usageLogType.GetMethod("RecordSkipped", new[] { typeof(string), typeof(string) });

@@ -6,7 +6,7 @@ A tiny, native Windows companion for Codex usage. Keep a **190 × 36 DIP floatin
 
 ## Download and run
 
-1. Download `Codex-Usage-Windows-v0.1.2-win-x64.exe` from [Releases](https://github.com/guberm/Codex-Usage-Windows/releases/latest).
+1. Download `Codex-Usage-Windows-v0.1.3-win-x64.exe` from [Releases](https://github.com/guberm/Codex-Usage-Windows/releases/latest).
 2. Keep it in a permanent folder and run it. Windows 10/11 x64; no separate .NET installation or administrator rights required.
 3. Click **Sign in with ChatGPT**, enter the displayed code in the browser, and authorize your account. If requested, enable device code authorization under ChatGPT **Settings → Security**.
 4. Click the header to collapse. Drag the pill where you want it. Right-click for refresh, positioning, hide and exit.
@@ -17,9 +17,8 @@ The executable is unsigned. Release checksums are provided in `SHA256SUMS.txt`.
 
 - **Floating pill:** percentage remaining, countdown, always-on-top toggle, remembered position. Choose any limit by clicking its card.
 - **Details:** all reported Codex primary/secondary and additional limits (including Spark), local reset dates, banked resets and credit balance.
-- **Tray:** large, bold, high-contrast remaining-percentage digits fill the icon; click to show details. Launching the app again restores the existing instance.
-- **Floating on/off:** toggle **Show floating window** in the panel or tray menu. The preference survives restart. When disabled, closing details returns to tray-only mode.
-- **Refresh:** manually, every 15 minutes, when Windows unlocks, resumes, or network connectivity returns.
+- **Tray:** large, bold, high-contrast remaining-percentage digits fill the icon; click to show details. Launching the app again restores the existing instance. Collapsing details returns to tray-only mode.
+- **Refresh:** manually, every 5/10/15/30/60 minutes (choose in the panel; default 5), when Windows unlocks, resumes, or network connectivity returns.
 - **Notifications:** primary Codex remaining percentage changes by at least 1%; configurable in the panel. Windows notification settings / Do Not Disturb can suppress alerts.
 - **Banked resets:** each action requires confirmation. A request ID is saved before sending; an uncertain request can be retried using **Retry reset**, including when the reported credit balance has already fallen to zero.
 - **Appearance:** follows the Windows app light/dark preference. Enter/Space toggles the focused header; Escape collapses details.
@@ -49,7 +48,7 @@ Windows with the .NET 10 SDK:
 ./build.ps1
 ```
 
-Produces a self-contained single-file x64 executable and SHA-256 checksum in `artifacts/release/`. Runs dependency-free checks for parsing, null fields, rounding, account claims, DPAPI, device-code parsing, token refresh, reset idempotency, and bounded local refresh logging. Then launches the published executable for a WPF smoke test: compact/expanded views, limit selection, themes, stale status, pinning, hide/restore, tray and persisted preferences. Images and the result are saved in `artifacts/smoke/`.
+Produces a self-contained single-file x64 executable and SHA-256 checksum in `artifacts/release/`. Runs dependency-free checks for parsing, null fields, rounding, account claims, DPAPI, device-code parsing, token refresh, reset idempotency, and bounded local refresh logging. Then launches the published executable for a WPF smoke test: compact/expanded views, limit selection, auto-refresh interval, themes, stale status, pinning, hide/restore, tray and persisted preferences. Images and the result are saved in `artifacts/smoke/`.
 
 ```powershell
 dotnet run --project tests/Checks.csproj

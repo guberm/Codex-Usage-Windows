@@ -58,12 +58,19 @@
           </WrapPanel>
           <Border Height="1" Background="{DynamicResource LineBrush}" Margin="0,8,0,10"/>
           <CheckBox x:Name="PinnedCheck" Content="Always on top" Click="PinChanged"/>
-          <CheckBox x:Name="FloatingCheck" Content="Show floating window" Click="FloatingChanged"/>
           <CheckBox x:Name="NotifyCheck" Content="Notify on usage changes (±1%)" Click="NotifyChanged"/>
           <CheckBox x:Name="StartupCheck" Content="Start with Windows" Click="StartupChanged"/>
-          <TextBlock Text="Auto-refresh every 15 minutes, on unlock and reconnect." TextWrapping="Wrap" Foreground="{DynamicResource MutedBrush}" FontSize="11" Margin="0,6,0,12"/>
+          <WrapPanel VerticalAlignment="Center" Margin="0,6,0,0">
+            <TextBlock Text="Auto-refresh every" VerticalAlignment="Center" Margin="0,0,6,0"/>
+            <ComboBox x:Name="IntervalBox" Width="72" AutomationProperties.Name="Auto-refresh interval" SelectionChanged="IntervalChanged">
+              <ComboBoxItem Content="5 min" Tag="5"/><ComboBoxItem Content="10 min" Tag="10"/><ComboBoxItem Content="15 min" Tag="15"/>
+              <ComboBoxItem Content="30 min" Tag="30"/><ComboBoxItem Content="60 min" Tag="60"/>
+            </ComboBox>
+            <TextBlock Text="plus unlock and reconnect" VerticalAlignment="Center" Margin="6,0,0,0" Foreground="{DynamicResource MutedBrush}" FontSize="11"/>
+          </WrapPanel>
+          <TextBlock Text="Refresh also happens on Windows unlock and network reconnect." TextWrapping="Wrap" Foreground="{DynamicResource MutedBrush}" FontSize="11" Margin="0,6,0,12"/>
           <WrapPanel><Button Content="Hide to tray" Click="HideClick"/><Button x:Name="SignOutButton" Content="Sign out" Click="SignOut" Visibility="Collapsed"/><Button Content="Exit" Click="ExitClick"/></WrapPanel>
-          <TextBlock Text="Unofficial companion · v0.1.2" Foreground="{DynamicResource MutedBrush}" FontSize="10"/>
+          <TextBlock Text="Unofficial companion · v0.1.3" Foreground="{DynamicResource MutedBrush}" FontSize="10"/>
         </StackPanel>
       </ScrollViewer>
     </StackPanel>
