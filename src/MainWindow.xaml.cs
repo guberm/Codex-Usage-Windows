@@ -144,7 +144,7 @@ public partial class MainWindow : Window
             TrySaveSettings();
         }
     }
-    private static int ClampIntervalIndex(int minutes) => minutes switch { <= 5 => 0, <= 10 => 1, <= 15 => 2, <= 30 => 3, _ => 4 };
+    private static int ClampIntervalIndex(int minutes) => minutes switch { <= 1 => 0, <= 3 => 1, <= 5 => 2, <= 10 => 3, <= 15 => 4, <= 30 => 5, _ => 6 };
     private void TrySaveSettings() { try { SaveSettings(); } catch (Exception e) when (e is IOException or UnauthorizedAccessException) { StatusLabel.Text = "Could not save preferences."; } }
     private void StartupChanged(object sender, RoutedEventArgs e)
     {
@@ -343,10 +343,12 @@ public partial class MainWindow : Window
             ((System.Windows.Controls.Button)LimitCards.Children[1]).RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
             if (Percent.Text != "74%") throw new Exception("Limit selection");
             if (FindName("IntervalBox") is not System.Windows.Controls.ComboBox interval) throw new Exception("Missing auto-refresh interval selector");
-            if (interval.SelectedIndex != 0) throw new Exception($"Default interval should be 5 min, got index {interval.SelectedIndex}");
-            interval.SelectedIndex = 2;
-            if (storage.Read<Settings>("settings.json")?.RefreshMinutes != 15) throw new Exception("Interval preference was not saved");
+            if (interval.SelectedIndex != 2) throw new Exception($"Default interval should be 5 min, got index {interval.SelectedIndex}");
             interval.SelectedIndex = 0;
+            if (storage.Read<Settings>("settings.json")?.RefreshMinutes != 1) throw new Exception("1-minute interval was not saved");
+            interval.SelectedIndex = 1;
+            if (storage.Read<Settings>("settings.json")?.RefreshMinutes != 3) throw new Exception("3-minute interval was not saved");
+            interval.SelectedIndex = 2;
             if (storage.Read<Settings>("settings.json")?.RefreshMinutes != 5) throw new Exception("Interval preference was not restored");
             ApplyTheme(true); Render(); await Dispatcher.Yield(DispatcherPriority.ApplicationIdle); Capture("light.png");
             usage = usage! with { FetchedAt = DateTimeOffset.UtcNow.AddHours(-1) }; Render();

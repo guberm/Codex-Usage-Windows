@@ -1,3 +1,7 @@
+## v0.1.4
+
+- **Added 1-minute and 3-minute auto-refresh intervals.** The panel selector now offers 1, 3, 5, 10, 15, 30 or 60 minutes; the default is still 5.
+
 ## v0.1.3
 
 - **Auto-refresh interval is now user-selectable** in the panel: 5, 10, 15, 30 or 60 minutes. Default is 5 minutes (previously a fixed 15).
