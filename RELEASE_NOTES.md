@@ -1,3 +1,7 @@
+## v0.1.6
+
+- **Banked resets now show when they expire.** The credits row reads the reset details and displays the next expiration as a local date and time (for example, "2 banked resets · next expires 6/20/2026 8:30 AM"). Only available resets count, the earliest expiration is shown, and a failed details call degrades to the plain count.
+
 ## v0.1.5
 
 - **A limit reset now raises a notification.** When a limit's reset time passes, Codex Usage tells you the window reset and how much allowance is back (for example, "Codex · Weekly reset · 100% available"). Uses the existing notification switch; stale readings (older than a day) do not fire it.

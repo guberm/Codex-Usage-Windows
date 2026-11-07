@@ -209,7 +209,7 @@ public partial class MainWindow : Window
         PlanLabel.Text = demo ? "DEMO DATA" : usage?.Plan.ToUpperInvariant() ?? "";
         StatusLabel.Text = error ?? (login != null ? "Waiting for browser authorization…" : busy ? "Refreshing…" : usage != null ? $"{(stale ? "Stale · " : "")}Updated {usage.FetchedAt.LocalDateTime:g}" : "Sign in securely with your ChatGPT account.");
         if (signedIn) AccountLabel.Text = demo ? "Preview · no account connected" : "Connected to ChatGPT";
-        CreditsLabel.Text = usage == null ? "" : $"{usage.Resets} banked resets" + (usage.Balance == null ? "" : $" · Credit balance: {usage.Balance}");
+        CreditsLabel.Text = usage == null ? "" : $"{usage.Resets} banked resets" + (usage.ResetExpiry is long expiry ? $" · next expires {DateTimeOffset.FromUnixTimeSeconds(expiry).LocalDateTime:g}" : "") + (usage.Balance == null ? "" : $" · Credit balance: {usage.Balance}");
         SignInButton.Visibility = signedIn ? Visibility.Collapsed : Visibility.Visible;
         SignInButton.IsEnabled = !busy;
         foreach (var b in new[] { RefreshButton, ResetButton, SignOutButton }) { b.Visibility = signedIn ? Visibility.Visible : Visibility.Collapsed; b.IsEnabled = !busy && !demo; }

@@ -1,9 +1,10 @@
+using System.Globalization;
 using System.Text.Json;
 
 namespace CodexUsage;
 
 public record LimitWindow(string Name, int Remaining, long? ResetAt, long? Seconds);
-public record Usage(string Plan, List<LimitWindow> Windows, int Resets, string? Balance, DateTimeOffset FetchedAt)
+public record Usage(string Plan, List<LimitWindow> Windows, int Resets, string? Balance, DateTimeOffset FetchedAt, long? ResetExpiry = null)
 {
     public static Usage Parse(string json)
     {
@@ -62,6 +63,21 @@ public record Usage(string Plan, List<LimitWindow> Windows, int Resets, string? 
         using var doc = JsonDocument.Parse(json);
         var code = Text(doc.RootElement, "code");
         return code is "reset" or "already_redeemed" or "no_credit" or "nothing_to_reset" ? code : throw new FormatException("Unknown reset result. Retry with the same request ID.");
+    }
+    // Expiration of the banked resets lives in the credits details payload, not in the usage payload.
+    public static long? EarliestResetExpiry(string json)
+    {
+        using var doc = JsonDocument.Parse(json);
+        if (!doc.RootElement.TryGetProperty("credits", out var credits) || credits.ValueKind != JsonValueKind.Array) return null;
+        long? earliest = null;
+        foreach (var credit in credits.EnumerateArray())
+        {
+            if (Text(credit, "status") is string status && status != "available") continue;
+            if (Text(credit, "expires_at") is not string stamp ||
+                !DateTimeOffset.TryParse(stamp, CultureInfo.InvariantCulture, DateTimeStyles.AdjustToUniversal | DateTimeStyles.AssumeUniversal, out var expires)) continue;
+            if (earliest is null || expires.ToUnixTimeSeconds() < earliest) earliest = expires.ToUnixTimeSeconds();
+        }
+        return earliest;
     }
 }
 public record Session(string AccessToken, string RefreshToken, string IdToken, string AccountId, string? Email, long? ExpiresAt)

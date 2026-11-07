@@ -14,7 +14,7 @@ public class CodexApi(Storage storage, HttpClient? http = null)
     {
         using (request)
         {
-            request.Headers.UserAgent.ParseAdd("codex-usage-windows/0.1.5");
+            request.Headers.UserAgent.ParseAdd("codex-usage-windows/0.1.6");
             request.Headers.Accept.Add(new("application/json"));
             using var response = await client.SendAsync(request, ct);
             if (!response.IsSuccessStatusCode) throw new HttpRequestException($"HTTP {(int)response.StatusCode}", null, response.StatusCode);
@@ -69,7 +69,15 @@ public class CodexApi(Storage storage, HttpClient? http = null)
             catch (HttpRequestException e) when (e.StatusCode == HttpStatusCode.Unauthorized && attempt == 0) { session = await Refresh(session, ct); }
         }
     }
-    public async Task<Usage> Fetch(CancellationToken cancellationToken) => Usage.Parse(await Authorized("usage", null, cancellationToken));
+    public async Task<Usage> Fetch(CancellationToken cancellationToken)
+    {
+        var usage = Usage.Parse(await Authorized("usage", null, cancellationToken));
+        // One extra request only when there is a reset to expire; a failure here still leaves the count usable.
+        if (usage.Resets > 0)
+            try { usage = usage with { ResetExpiry = Usage.EarliestResetExpiry(await Authorized("rate-limit-reset-credits", null, cancellationToken)) }; }
+            catch (Exception e) when (e is HttpRequestException or JsonException or FormatException) { }
+        return usage;
+    }
     public async Task<string> ConsumeReset(CancellationToken ct)
     {
         var session = storage.LoadSession() ?? throw new InvalidOperationException("Sign in first.");

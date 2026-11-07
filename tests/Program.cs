@@ -28,6 +28,10 @@ Check(Usage.ResetReminders(null, afterReset, 1000).Count == 0, "No reset reminde
 Check(Usage.ResetReminders(beforeReset, afterReset, 1000).Single().Contains("Codex · Primary reset") && Usage.ResetReminders(beforeReset, afterReset, 1000).Single().Contains("100% available"), "Reset reminder names the window and the restored allowance");
 Check(Usage.ResetReminders(new Usage("pro", new() { new("Codex · Primary", 12, 5000, 18000) }, 0, null, DateTimeOffset.FromUnixTimeSeconds(1000)), afterReset, 1000).Count == 0, "No reset reminder before the reset time");
 Check(Usage.ResetReminders(new Usage("pro", new() { new("Codex · Primary", 12, 1000, 18000) }, 0, null, DateTimeOffset.FromUnixTimeSeconds(1000 - 172800)), afterReset, 1000).Count == 0, "No reset reminder from a stale reading");
+const string creditsJson = """{"credits":[{"id":"c1","status":"available","expires_at":"2026-07-17T00:00:00Z"},{"id":"c2","status":"redeemed","expires_at":"2026-06-01T00:00:00Z"},{"id":"c3","status":"available","expires_at":"not-a-date"},{"id":"c4","status":"available","expires_at":"2026-06-20T12:30:00Z"}],"available_count":3}""";
+Check(Usage.EarliestResetExpiry(creditsJson) == DateTimeOffset.Parse("2026-06-20T12:30:00Z").ToUnixTimeSeconds(), "Earliest expiry comes from available credits only, skipping bad dates");
+Check(Usage.EarliestResetExpiry("""{"credits":[],"available_count":0}""") == null && Usage.EarliestResetExpiry("{}") == null, "No expiry without credits");
+Check(Usage.Parse(payload).ResetExpiry == null, "Usage payload carries no expiry by itself");
 foreach (var code in new[] { "reset", "already_redeemed", "no_credit", "nothing_to_reset" }) Check(Usage.ResetOutcome("{\"code\":\"" + code + "\"}") == code, "Reset outcome");
 Reject(() => Usage.ResetOutcome("{\"code\":\"unknown\"}"), "Unknown reset result must remain pending");
 string Jwt(object data) => "e30." + Convert.ToBase64String(JsonSerializer.SerializeToUtf8Bytes(data)).TrimEnd('=').Replace('+','-').Replace('/','_') + ".signature";
@@ -60,6 +64,8 @@ try {
         calls.Add(request.RequestUri!.AbsolutePath);
         if (calls.Count == 1) return new HttpResponseMessage(HttpStatusCode.Unauthorized);
         if (request.RequestUri!.AbsolutePath == "/oauth/token") return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(tokenJson) };
+        if (request.RequestUri!.AbsolutePath.EndsWith("/rate-limit-reset-credits"))
+            return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("""{"credits":[{"status":"available","expires_at":"2026-06-20T12:30:00Z"}],"available_count":1}""") };
         Check(request.Headers.GetValues("ChatGPT-Account-Id").Single() == "account-one", "Account header");
         await Task.CompletedTask;
         return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(payload) };
@@ -67,7 +73,8 @@ try {
     var api = new CodexApi(storage, new HttpClient(handler));
     storage.SaveSession(session);
     var fetched = await api.Fetch(CancellationToken.None);
-    Check(fetched.Windows[0].Remaining == 86 && calls.Count == 3, "401 refreshes once and retries usage");
+    Check(fetched.Windows[0].Remaining == 86 && calls.Count == 4, "401 refreshes once, retries usage, then reads reset details");
+    Check(fetched.ResetExpiry == DateTimeOffset.Parse("2026-06-20T12:30:00Z").ToUnixTimeSeconds(), "Fetched usage carries the reset expiration");
     var resetBodies = new List<string>();
     var resetApi = new CodexApi(storage, new HttpClient(new FakeHandler(async request => {
         resetBodies.Add(await request.Content!.ReadAsStringAsync());

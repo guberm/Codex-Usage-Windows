@@ -70,7 +70,7 @@
           </WrapPanel>
           <TextBlock Text="Refresh also happens on Windows unlock and network reconnect." TextWrapping="Wrap" Foreground="{DynamicResource MutedBrush}" FontSize="11" Margin="0,6,0,12"/>
           <WrapPanel><Button Content="Hide to tray" Click="HideClick"/><Button x:Name="SignOutButton" Content="Sign out" Click="SignOut" Visibility="Collapsed"/><Button Content="Exit" Click="ExitClick"/></WrapPanel>
-          <TextBlock Text="Unofficial companion · v0.1.5" Foreground="{DynamicResource MutedBrush}" FontSize="10"/>
+          <TextBlock Text="Unofficial companion · v0.1.6" Foreground="{DynamicResource MutedBrush}" FontSize="10"/>
         </StackPanel>
       </ScrollViewer>
     </StackPanel>
