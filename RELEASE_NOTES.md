@@ -1,3 +1,7 @@
+## v0.1.5
+
+- **A limit reset now raises a notification.** When a limit's reset time passes, Codex Usage tells you the window reset and how much allowance is back (for example, "Codex · Weekly reset · 100% available"). Uses the existing notification switch; stale readings (older than a day) do not fire it.
+
 ## v0.1.4
 
 - **Added 1-minute and 3-minute auto-refresh intervals.** The panel selector now offers 1, 3, 5, 10, 15, 30 or 60 minutes; the default is still 5.

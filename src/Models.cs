@@ -50,6 +50,13 @@ public record Usage(string Plan, List<LimitWindow> Windows, int Resets, string? 
         return span.TotalDays >= 1 ? $"{(int)span.TotalDays}d {span.Hours}h" : span.TotalHours >= 1 ? $"{span.Hours}h {span.Minutes}m" : $"{Math.Max(1, span.Minutes)}m";
     }
     public static int? Change(int? previous, int current) => previous is null || previous == current ? null : current - previous;
+    // Remind once per reset: a window whose reset time passed since the previous reading. Readings older than a day are stale data, not a fresh event.
+    public static List<string> ResetReminders(Usage? previous, Usage updated, long now)
+    {
+        if (previous == null || now - previous.FetchedAt.ToUnixTimeSeconds() > 86400) return new();
+        return previous.Windows.Where(w => w.ResetAt is long at && at <= now)
+            .Select(w => updated.Windows.FirstOrDefault(n => n.Name == w.Name) is LimitWindow fresh ? $"{w.Name} reset · {fresh.Remaining}% available" : $"{w.Name} has reset").ToList();
+    }
     public static string ResetOutcome(string json)
     {
         using var doc = JsonDocument.Parse(json);

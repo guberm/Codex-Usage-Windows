@@ -58,7 +58,7 @@
           </WrapPanel>
           <Border Height="1" Background="{DynamicResource LineBrush}" Margin="0,8,0,10"/>
           <CheckBox x:Name="PinnedCheck" Content="Always on top" Click="PinChanged"/>
-          <CheckBox x:Name="NotifyCheck" Content="Notify on usage changes (±1%)" Click="NotifyChanged"/>
+          <CheckBox x:Name="NotifyCheck" Content="Notify on usage changes and resets" Click="NotifyChanged"/>
           <CheckBox x:Name="StartupCheck" Content="Start with Windows" Click="StartupChanged"/>
           <WrapPanel VerticalAlignment="Center" Margin="0,6,0,0">
             <TextBlock Text="Auto-refresh every" VerticalAlignment="Center" Margin="0,0,6,0"/>
@@ -70,7 +70,7 @@
           </WrapPanel>
           <TextBlock Text="Refresh also happens on Windows unlock and network reconnect." TextWrapping="Wrap" Foreground="{DynamicResource MutedBrush}" FontSize="11" Margin="0,6,0,12"/>
           <WrapPanel><Button Content="Hide to tray" Click="HideClick"/><Button x:Name="SignOutButton" Content="Sign out" Click="SignOut" Visibility="Collapsed"/><Button Content="Exit" Click="ExitClick"/></WrapPanel>
-          <TextBlock Text="Unofficial companion · v0.1.4" Foreground="{DynamicResource MutedBrush}" FontSize="10"/>
+          <TextBlock Text="Unofficial companion · v0.1.5" Foreground="{DynamicResource MutedBrush}" FontSize="10"/>
         </StackPanel>
       </ScrollViewer>
     </StackPanel>

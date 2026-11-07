@@ -22,6 +22,12 @@ Check(Usage.Countdown(2000000000, DateTimeOffset.FromUnixTimeSeconds(2000000000 
 Check(Usage.Countdown(null, DateTimeOffset.UtcNow) == "—", "Unknown countdown");
 Check(Usage.Countdown(1, DateTimeOffset.UtcNow) == "due", "Expired data does not invent a new allowance");
 Check(Usage.Change(null, 86) == null && Usage.Change(86, 86) == null && Usage.Change(86, 85) == -1, "Change notifications");
+var beforeReset = new Usage("pro", new() { new("Codex · Primary", 12, 1000, 18000) }, 0, null, DateTimeOffset.FromUnixTimeSeconds(900));
+var afterReset = new Usage("pro", new() { new("Codex · Primary", 100, 2000, 18000) }, 0, null, DateTimeOffset.FromUnixTimeSeconds(1000));
+Check(Usage.ResetReminders(null, afterReset, 1000).Count == 0, "No reset reminder without a previous reading");
+Check(Usage.ResetReminders(beforeReset, afterReset, 1000).Single().Contains("Codex · Primary reset") && Usage.ResetReminders(beforeReset, afterReset, 1000).Single().Contains("100% available"), "Reset reminder names the window and the restored allowance");
+Check(Usage.ResetReminders(new Usage("pro", new() { new("Codex · Primary", 12, 5000, 18000) }, 0, null, DateTimeOffset.FromUnixTimeSeconds(1000)), afterReset, 1000).Count == 0, "No reset reminder before the reset time");
+Check(Usage.ResetReminders(new Usage("pro", new() { new("Codex · Primary", 12, 1000, 18000) }, 0, null, DateTimeOffset.FromUnixTimeSeconds(1000 - 172800)), afterReset, 1000).Count == 0, "No reset reminder from a stale reading");
 foreach (var code in new[] { "reset", "already_redeemed", "no_credit", "nothing_to_reset" }) Check(Usage.ResetOutcome("{\"code\":\"" + code + "\"}") == code, "Reset outcome");
 Reject(() => Usage.ResetOutcome("{\"code\":\"unknown\"}"), "Unknown reset result must remain pending");
 string Jwt(object data) => "e30." + Convert.ToBase64String(JsonSerializer.SerializeToUtf8Bytes(data)).TrimEnd('=').Replace('+','-').Replace('/','_') + ".signature";

@@ -183,6 +183,7 @@ public partial class MainWindow : Window
         usage = updated; error = null;
         storage.Log.RecordFetch(trigger, Stopwatch.GetElapsedTime(started), previous, updated, null);
         if (settings.Notify && delta != null) tray.ShowBalloonTip(5000, "Codex usage changed", $"{updated.Windows[0].Remaining}% remaining ({delta:+0;-0}%). Resets in {Usage.Countdown(updated.Windows[0].ResetAt, DateTimeOffset.UtcNow)}.", Forms.ToolTipIcon.Info);
+        if (settings.Notify) foreach (var reminder in Usage.ResetReminders(previous, updated, DateTimeOffset.UtcNow.ToUnixTimeSeconds())) tray.ShowBalloonTip(5000, "Codex limit reset", reminder, Forms.ToolTipIcon.Info);
     }
     private static string FriendlyError(Exception e) => e switch {
         HttpRequestException { StatusCode: HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden } => "Session rejected. Sign out and sign in again.",
